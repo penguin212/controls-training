@@ -13,21 +13,27 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj.AnalogPotentiometer;
 import edu.wpi.first.wpilibj.Timer;
 
+import com.ctre.phoenix.motorcontrol.ControlMode;
+import com.ctre.phoenix.motorcontrol.NeutralMode;
+import com.ctre.phoenix.motorcontrol.can.*;
+
 
 public class ExampleSubsystem extends SubsystemBase {
   /** Creates a new ExampleSubsystem. */
   private final CANSparkMax launchmotor1 = new CANSparkMax(3, MotorType.kBrushless);
-  private final CANSparkMax launchmotor2 = new CANSparkMax(16, MotorType.kBrushless);//check if these should be opposite of each other
-  private final CANSparkMax feedmotor = new CANSparkMax(8, MotorType.kBrushless);
+  private final CANSparkMax launchmotor2 = new CANSparkMax(16, MotorType.kBrushless);//check if these should be opposite of each other  
+  private final WPI_TalonSRX feedmotor = new WPI_TalonSRX(8);
   private final AnalogPotentiometer irbot = new AnalogPotentiometer(0);//at the bottom
   private final AnalogPotentiometer irmid = new AnalogPotentiometer(1);//at the middle
   private final AnalogPotentiometer irtop = new AnalogPotentiometer(3);//at the top
   private final XboxController controller = new XboxController(0);
   private final Timer t = new Timer();
-  private final double BALL_DETECTED = .01;//SET THIS THING!!!!
-  private final double FEED_SPEED = .5;
-  private final double LAUNCH_SPEED = .1;
-  private final double FIRING_TIME = .5;
+  private final double BALL_DETECTED = .38;
+  private final double BALL_DETECTED2 = .30;
+  private final double BALL_DETECTED3 = .123;//SET THIS THING!!!!
+  private final double FEED_SPEED = -.25;
+  private final double LAUNCH_SPEED = -.25;
+  private final double FIRING_TIME = 2;
   boolean bot = false;
   boolean mid = false;
   boolean top = false;
@@ -40,11 +46,11 @@ public class ExampleSubsystem extends SubsystemBase {
   public ExampleSubsystem() {
     launchmotor1.restoreFactoryDefaults();
     launchmotor2.restoreFactoryDefaults();
-    feedmotor.restoreFactoryDefaults();
-    launchmotor1.setIdleMode(IdleMode.kCoast);
-    launchmotor2.setIdleMode(IdleMode.kCoast);
-    feedmotor.setIdleMode(IdleMode.kCoast);
-    launchmotor2.follow(launchmotor1);
+    feedmotor.configFactoryDefault();
+    feedmotor.setNeutralMode(NeutralMode.Coast);
+    launchmotor1.setIdleMode(IdleMode.kBrake);
+    launchmotor2.setIdleMode(IdleMode.kBrake);
+    launchmotor2.follow(launchmotor1); 
     
   }
 
@@ -57,9 +63,9 @@ public class ExampleSubsystem extends SubsystemBase {
   }
 
   public void updateballs(){
-    top = irtop.get() < BALL_DETECTED;
-    mid = irmid.get() < BALL_DETECTED;
-    bot = irbot.get() < BALL_DETECTED;
+    top = irtop.get() > BALL_DETECTED3;
+    mid = irmid.get() > BALL_DETECTED2;
+    bot = irbot.get() > BALL_DETECTED;
   }
 
   public void updatestate(){//possible states are 0,  10 11 12,  21 22 23,  32
@@ -71,7 +77,7 @@ public class ExampleSubsystem extends SubsystemBase {
     state += 10 * (t + m + b); //tens digit is number of balls in system
     if(top){ //ones digit is height of heighest ball, 23 is used for ball - nothing - ball case
       state += 2;
-      if(!mid){
+      if(!mid && bot){
         state += 1; //accounts for state 23
       }
       return;
@@ -84,14 +90,13 @@ public class ExampleSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
-    // System.out.print("1: " + ir1.get());
-    // System.out.print("  2: " + ir1.get());
-    // System.out.println("  3: " + ir1.get());
     if(controller.getAButtonPressed()){
       active = !active;
     }
 
-    System.out.println(state);
+    System.out.println(state + " " + irbot.get() + " " + irmid.get() + " " + irtop.get());
+
+
     if(!active){
       return; 
     }
@@ -99,11 +104,12 @@ public class ExampleSubsystem extends SubsystemBase {
     if(firing){
       if(t.get() < FIRING_TIME){
         launchmotor1.set(LAUNCH_SPEED);
+        feedmotor.set(FEED_SPEED);
         return;
       } else {
         updatestate();
         t.reset();
-        launchmotor1.set(LAUNCH_SPEED);
+        launchmotor1.set(0);
         firing = false;
       }
     }
@@ -116,18 +122,10 @@ public class ExampleSubsystem extends SubsystemBase {
       }
     }
 
-    if(state == 10 || state == 23){ //one ball in lowest position, sends it up to the second position
+    if(state == 10){ //one ball in lowest position, sends it up to the second position
       feedmotor.set(FEED_SPEED);
+      updateballs();
       if(mid){
-        updatestate();
-      } else {
-        return;
-      } 
-    }
-
-    if(state == 11){ //one ball in middle position, sends it to the top
-      feedmotor.set(FEED_SPEED);
-      if(top){
         updatestate();
       } else {
         return;
@@ -136,6 +134,7 @@ public class ExampleSubsystem extends SubsystemBase {
 
     if(state == 21){ //two balls, middle and bottom, sends them up a notch
       feedmotor.set(FEED_SPEED);
+      updateballs();
       if(top && mid){
         updatestate();
       } else {
@@ -143,12 +142,13 @@ public class ExampleSubsystem extends SubsystemBase {
       } 
     }
 
-    if(state % 10 == 2){ // A BALL IS AT THE TOP!!! READY TO LAUNCH!!
+    if(state % 10 == 2 || state == 23 || state == 11){ // A BALL IS AT THE TOP!!! READY TO LAUNCH!!
       feedmotor.set(0);
       if(controller.getRightTriggerAxis() > .9){
         firing = true;
         t.start();
       }
+      updatestate();
     }
 
     
