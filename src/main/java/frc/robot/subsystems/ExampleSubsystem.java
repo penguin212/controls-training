@@ -31,14 +31,15 @@ public class ExampleSubsystem extends SubsystemBase {
   private final double BALL_DETECTED = .38;
   private final double BALL_DETECTED2 = .30;
   private final double BALL_DETECTED3 = .123;//SET THIS THING!!!!
-  private final double FEED_SPEED = -.25;
+  private final double FEED_SPEED = -.6;
   private final double LAUNCH_SPEED = -.25;
-  private final double FIRING_TIME = 2;
+  private final double FIRING_TIME = 1;
   boolean bot = false;
   boolean mid = false;
   boolean top = false;
   boolean firing = false;
   boolean idle = true;
+  boolean constantfire = false;
   int state = 0;
   double starttime;
   boolean active = false;
@@ -94,6 +95,10 @@ public class ExampleSubsystem extends SubsystemBase {
       active = !active;
     }
 
+    if(controller.getXButtonPressed()){
+      constantfire = true;
+    }
+
     System.out.println(state + " " + irbot.get() + " " + irmid.get() + " " + irtop.get());
 
 
@@ -101,21 +106,37 @@ public class ExampleSubsystem extends SubsystemBase {
       return; 
     }
 
+    if(constantfire){ //fires constantly until state 0
+      updatestate();
+      if(state == 0){
+        feedmotor.set(0);
+        launchmotor1.set(0);
+        constantfire = false;
+        firing = false;
+        return;
+      }
+      feedmotor.set(FEED_SPEED);
+      launchmotor1.set(LAUNCH_SPEED);
+      return;
+    }
+
     if(firing){
       if(t.get() < FIRING_TIME){
         launchmotor1.set(LAUNCH_SPEED);
         feedmotor.set(FEED_SPEED);
         return;
-      } else {
-        updatestate();
-        t.reset();
-        launchmotor1.set(0);
-        firing = false;
       }
+      updatestate();
+      t.stop();
+      t.reset();
+      launchmotor1.set(0);
+      firing = false;
+      return;
     }
 
     if(state == 0){ //no balls in system, waits here until balls enter
       feedmotor.set(0);
+      launchmotor1.set(0);
       updatestate();
       if(state == 0){
         return;
@@ -144,6 +165,7 @@ public class ExampleSubsystem extends SubsystemBase {
 
     if(state % 10 == 2 || state == 23 || state == 11){ // A BALL IS AT THE TOP!!! READY TO LAUNCH!!
       feedmotor.set(0);
+      launchmotor1.set(0);
       if(controller.getRightTriggerAxis() > .9){
         firing = true;
         t.start();
