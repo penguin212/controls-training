@@ -30,7 +30,7 @@ public class ExampleSubsystem extends SubsystemBase {
   private final Timer t = new Timer();
   private final double BALL_DETECTED = .38;
   private final double BALL_DETECTED2 = .30;
-  private final double BALL_DETECTED3 = .123;//SET THIS THING!!!!
+  private final double BALL_DETECTED3 = .123;
   private final double FEED_SPEED = -.6;
   private final double LAUNCH_SPEED = -.25;
   private final double FIRING_TIME = 1;
@@ -40,7 +40,7 @@ public class ExampleSubsystem extends SubsystemBase {
   boolean firing = false;
   boolean idle = true;
   boolean constantfire = false;
-  int state = 0;
+  int state = 0; //keeps track of the balls in the system
   double starttime;
   boolean active = false;
   
@@ -55,28 +55,43 @@ public class ExampleSubsystem extends SubsystemBase {
     
   }
 
-  // public double getSpeed(double x){
-
-  //   return(1 - x/.65);
-  // }
-  public int booltoint(boolean a){
+  public int booltoint(boolean a){ //give 1 if true
     return a ? 1 : 0;
   }
 
-  public void updateballs(){
+  public void updateballs(){ //checks if a ball is in each spot
     top = irtop.get() > BALL_DETECTED3;
     mid = irmid.get() > BALL_DETECTED2;
     bot = irbot.get() > BALL_DETECTED;
   }
 
-  public void updatestate(){//possible states are 0,  10 11 12,  21 22 23,  32
+  public void updatestate(){ //uses updateballs to convert position of balls into a state number
+    //the state variable keeps track of which state the mechanism is in
+    //updatestate will not always be called when balls are being pushed by the conveyor, since it will be inaccurate
+
+    //possible states are 0,  10 11 12,  21 22 23,  32
+    //first digit is the number of balls in the system
+    //second digit is the highest position of the balls
+    //EXCEPTION: the case of ball - no ball - ball is state 23
+
+    //List of states & which states they flow to:
+
+    // State 0 (0 balls): Idling, constantly checking for new balls => State 10 (new ball)
+    // State 10 (1 ball, bottom position): Moves ball up into middle position => State 11 (finished moving)
+    // State 11 (1 ball, middle position): Idling, checking for new balls, waiting to fire => State 0 (fired), State 21 (new ball)
+    // State 12 (1 ball, top position): Idling, checking for new balls, waiting to fire => State 0 (fired), State 23 (new ball)
+    // State 21 (2 balls, bottom & middle positions): Moves balls up into middle and top positions => State 22 (finished moving)
+    // State 22 (2 balls, middle & top positions): Idling, checking for new balls, waiting to fire => State 12 (fired), State 32 (new ball)
+    // State 23 (2 balls, bottom & top positions): Idling, waiting to fire => State 11 (fired)
+    // State 32 (3 balls, bottom, middle, & top positions): Idling, waiting to fire => State 22 (fired)
+
     updateballs();
     int t = booltoint(top);
     int m = booltoint(mid);
     int b = booltoint(bot);
     state = 0;
-    state += 10 * (t + m + b); //tens digit is number of balls in system
-    if(top){ //ones digit is height of heighest ball, 23 is used for ball - nothing - ball case
+    state += 10 * (t + m + b);
+    if(top){ 
       state += 2;
       if(!mid && bot){
         state += 1; //accounts for state 23
@@ -90,11 +105,15 @@ public class ExampleSubsystem extends SubsystemBase {
   }
 
   @Override
-  public void periodic() {
+  public void periodic() { //Implements logic as described above according to the current state
+    //additionally has the ability to fire every ball currently stored
+
+    //A button is used to activate and deactivate
     if(controller.getAButtonPressed()){
       active = !active;
     }
 
+    //X button is used to fire entire storage
     if(controller.getXButtonPressed()){
       constantfire = true;
     }
@@ -103,10 +122,12 @@ public class ExampleSubsystem extends SubsystemBase {
 
 
     if(!active){
+      feedmotor.set(0);
+      launchmotor1.set(0);
       return; 
     }
 
-    if(constantfire){ //fires constantly until state 0
+    if(constantfire){ //When constant fire is active, all balls will be fired until none are detected (State 0)
       updatestate();
       if(state == 0){
         feedmotor.set(0);
@@ -120,12 +141,14 @@ public class ExampleSubsystem extends SubsystemBase {
       return;
     }
 
-    if(firing){
+    if(firing){ //When single fire is triggered, one ball is shot out 
       if(t.get() < FIRING_TIME){
         launchmotor1.set(LAUNCH_SPEED);
         feedmotor.set(FEED_SPEED);
         return;
       }
+
+      //once firing is done, reset and figure out new state
       updatestate();
       t.stop();
       t.reset();
@@ -134,7 +157,7 @@ public class ExampleSubsystem extends SubsystemBase {
       return;
     }
 
-    if(state == 0){ //no balls in system, waits here until balls enter
+    if(state == 0){ //State 0 (0 balls): Idling, constantly checking for new balls => State 10 (new ball)
       feedmotor.set(0);
       launchmotor1.set(0);
       updatestate();
@@ -143,7 +166,7 @@ public class ExampleSubsystem extends SubsystemBase {
       }
     }
 
-    if(state == 10){ //one ball in lowest position, sends it up to the second position
+    if(state == 10){ //State 10 (1 ball, bottom position): Moves ball up into middle position => State 11 (finished moving)
       feedmotor.set(FEED_SPEED);
       updateballs();
       if(mid){
@@ -153,7 +176,7 @@ public class ExampleSubsystem extends SubsystemBase {
       } 
     }
 
-    if(state == 21){ //two balls, middle and bottom, sends them up a notch
+    if(state == 21){ //State 21 (2 balls, bottom & middle positions): Moves balls up into middle and top positions => State 22 (finished moving)
       feedmotor.set(FEED_SPEED);
       updateballs();
       if(top && mid){
@@ -163,7 +186,7 @@ public class ExampleSubsystem extends SubsystemBase {
       } 
     }
 
-    if(state % 10 == 2 || state == 23 || state == 11){ // A BALL IS AT THE TOP!!! READY TO LAUNCH!!
+    if(state % 10 == 2 || state == 23 || state == 11){ // States 11, 12, 22, 23, 32 (ball ready to fire): Waits for firing command while updating state
       feedmotor.set(0);
       launchmotor1.set(0);
       if(controller.getRightTriggerAxis() > .9){
@@ -172,17 +195,6 @@ public class ExampleSubsystem extends SubsystemBase {
       }
       updatestate();
     }
-
-    
-    // This method will be called once per scheduler run
-    // if(controller.getAButtonPressed()){
-    //   runmotor = !runmotor;
-    // }
-    // if(runmotor){
-    //   motor1.set(controller.getRightTriggerAxis() - controller.getLeftTriggerAxis());
-    // } else {
-    //   motor1.set(0.0);
-    // }
     
     
   }
